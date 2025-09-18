@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arch@ive - Gestion des périodiques en salle</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Police personnalisée -->
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="ark-favicon.png">
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: #f8f9fa;
+            color: #333;
+        }
+        .header {
+            background-color: #001F3F;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        .header h1 { font-size: 2rem; margin: 0; }
+        .header h1 em { font-style: italic; }
+        .sidebar {
+            background-color: #001F3F;
+            color: white;
+            height: 100vh;
+            padding: 20px;
+        }
+        .sidebar a {
+            color: #AED6F1;
+            text-decoration: none;
+            display: block;
+            margin-bottom: 10px;
+            transition: color 0.3s ease;
+        }
+        .sidebar a:hover { color: white; }
+        .main-content { padding: 20px; }
+        .btn-primary { background-color: #001F3F; border-color: #001F3F; transition: background-color 0.3s ease; }
+        .btn-primary:hover { background-color: #003366; }
+        .btn-danger { background-color: #dc3545; border-color: #dc3545; }
+        .btn-danger:hover { background-color: #c82333; }
+        .table { margin-top: 20px; }
+        .search-input { margin-bottom: 20px; }
+        .section { display: none; }
+        .section.active { display: block; }
+        .status-pending { color: orange; font-weight: bold; }
+        .status-done { color: green; font-weight: bold; }
+        .task-badge { background-color: orange; color: white; border-radius: 50%; padding: 2px 8px; font-size: 0.8rem; margin-left: 10px; }
+        .fade-in { animation: fadeIn 0.5s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .login-container {
+            position: fixed; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: white; padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            z-index: 1000; display: none;
+        }
+        .login-container.active { display: block; }
+    </style>
+</head>
+<body>
+    <div id="loginContainer" class="login-container active">
+        <h3>Connexion</h3>
+        <form id="loginForm">
+            <div class="mb-3">
+                <label for="username" class="form-label">Identifiant</label>
+                <input type="text" class="form-control" id="username" required>
+            </div>
+            <div class="mb-3">
+                <label for="password" class="form-label">Mot de passe</label>
+                <input type="password" class="form-control" id="password" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Se connecter</button>
+        </form>
+    </div>
+
+    <div id="mainContent" style="display: none;">
+        <div class="container-fluid">
+            <div class="row">
+                <div class="col-12 header">
+                    <h1><em>Arch@ive</em> - Gestion des périodiques en salle</h1>
+                </div>
+            </div>
+            <div class="row">
+                <nav class="col-md-3 col-lg-2 sidebar">
+                    <h4>Menu</h4>
+                    <a href="#" onclick="showSection('add')">Ajouter un périodique</a>
+                    <a href="#" onclick="showSection('list')">Liste des périodiques en salle</a>
+                    <a href="#" onclick="showSection('edit')">Modifier/supprimer un périodique</a>
+                    <a href="#" onclick="showSection('tasks')">Tâches à faire <span id="taskBadge" class="task-badge"></span></a>
+                    <a href="#" onclick="logout()" class="mt-3">Déconnexion</a>
+                </nav>
+                <main class="col-md-9 col-lg-10 main-content fade-in">
+                    <!-- ... (tous tes divs et formulaires sont inchangés) ... -->
+                    <!-- Garde tout ton HTML de formulaire/tables/modals ici, comme avant -->
+                    <!-- ... -->
+                    <!-- (Code inchangé, pour la lisibilité je ne répète pas tout le HTML initial) -->
+                </main>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // === CONFIGURATION SHEETDB ===
+        const SHEETDB_API_URL = 'https://sheetdb.io/api/v1/coqajlf6iwk3k';
+
+        let periodicals = [];
+
+        const username = "BGPPERIO";
+        const password = "BGPPERIO";
+        let isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
+
+        function checkLogin() {
+            const loginContainer = document.getElementById('loginContainer');
+            const mainContent = document.getElementById('mainContent');
+            if (!isLoggedIn) {
+                loginContainer.classList.add('active');
+                mainContent.style.display = 'none';
+            } else {
+                loginContainer.classList.remove('active');
+                mainContent.style.display = 'block';
+                loadPeriodicals();
+            }
+        }
+
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const enteredUsername = document.getElementById('username').value;
+            const enteredPassword = document.getElementById('password').value;
+            if (enteredUsername === username && enteredPassword === password) {
+                isLoggedIn = true;
+                localStorage.setItem('isLoggedIn', 'true');
+                checkLogin();
+                document.getElementById('loginForm').reset();
+            } else {
+                alert('Identifiant ou mot de passe incorrect.');
+            }
+        });
+
+        function logout() {
+            isLoggedIn = false;
+            localStorage.removeItem('isLoggedIn');
+            checkLogin();
+        }
+
+        function calculateDueDate(periodeGarde) {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = now.getMonth();
+            let dueDate;
+            if (periodeGarde.includes('mois')) {
+                dueDate = new Date(year, month + 1, 1);
+            } else if (periodeGarde.includes('an')) {
+                dueDate = new Date(year + 1, 0, 1);
+            }
+            return dueDate ? dueDate.toISOString() : '';
+        }
+
+        function formatDueDate(dueDate) {
+            if (!dueDate || isNaN(new Date(dueDate))) return '-';
+            const date = new Date(dueDate);
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const year = date.getFullYear();
+            return `${month}/${year}`;
+        }
+
+        function updateTaskBadge() {
+            const pendingTasks = periodicals.filter(p =>
+                p.tache !== 'Toute la collection en salle' && (!p.handled || p.handled === 'false')
+            ).length;
+            const badge = document.getElementById('taskBadge');
+            badge.textContent = pendingTasks > 0 ? pendingTasks : '';
+            badge.style.display = pendingTasks > 0 ? 'inline-block' : 'none';
+        }
+
+        function showSection(sectionId) {
+            document.querySelectorAll('.section').forEach(sec => sec.classList.remove('active'));
+            document.getElementById(sectionId).classList.add('active');
+            if (sectionId === 'list') renderList();
+            if (sectionId === 'edit') renderEdit();
+            if (sectionId === 'tasks') renderTasks();
+        }
+
+        async function addPériodique() {
+            const cote = document.getElementById('cote').value.trim();
+            const titre = document.getElementById('titre').value.trim();
+            const issn = document.getElementById('issn').value.trim();
+            const localisation = document.getElementById('localisation').value;
+            const périodicité = document.getElementById('périodicité').value;
+            const periodeGarde = document.getElementById('periodeGarde').value;
+            const tache = document.getElementById('tache').value;
+
+            if (!cote || !titre || !issn || !localisation || !périodicité || !periodeGarde || !tache) {
+                alert('Veuillez remplir tous les champs.');
+                return;
+            }
+            if (!/^[0-9X]{4}-[0-9X]{4}$/.test(issn)) {
+                alert("L'ISSN doit être au format XXXX-XXXX (8 chiffres ou X).");
+                return;
+            }
+
+            const newPeriodical = {
+                id: Date.now().toString(),
+                cote,
+                titre,
+                issn,
+                localisation,
+                périodicité,
+                periodeGarde,
+                tache,
+                handled: false,
+                handledDate: '',
+                dueDate: calculateDueDate(periodeGarde),
+                taskRemovedFromList: false
+            };
+
+            await fetch(SHEETDB_API_URL, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({data: [newPeriodical]})
+            });
+            alert('Périodique ajouté !');
+            document.getElementById('addForm').reset();
+            await loadPeriodicals();
+        }
+
+        function renderList() {
+            const body = document.getElementById('listBody');
+            body.innerHTML = '';
+            periodicals.forEach(p => {
+                const row = `<tr>
+                    <td>${p.cote}</td>
+                    <td>${p.titre}</td>
+                    <td>${p.issn}</td>
+                    <td>${p.localisation}</td>
+                    <td>${p.périodicité}</td>
+                    <td>${p.periodeGarde}</td>
+                    <td>${p.tache}</td>
+                    <td>${formatDueDate(p.dueDate)}</td>
+                </tr>`;
+                body.innerHTML += row;
+            });
+        }
+
+        function renderEdit() {
+            const body = document.getElementById('editBody');
+            body.innerHTML = '';
+            periodicals.forEach(p => {
+                const row = `<tr>
+                    <td>${p.cote}</td>
+                    <td>${p.titre}</td>
+                    <td>${p.issn}</td>
+                    <td>${p.localisation}</td>
+                    <td>${p.périodicité}</td>
+                    <td>${p.periodeGarde}</td>
+                    <td>${p.tache}</td>
+                    <td>${formatDueDate(p.dueDate)}</td>
+                    <td>
+                        <button class="btn btn-sm btn-primary" onclick="openEdit('${p.id}')">Modifier</button>
+                        <button class="btn btn-sm btn-danger" onclick="deletePériodique('${p.id}')">Supprimer</button>
+                    </td>
+                </tr>`;
+                body.innerHTML += row;
+            });
+        }
+
+        function openEdit(id) {
+            const p = periodicals.find(per => per.id == id);
+            if (p) {
+                document.getElementById('editId').value = p.id;
+                document.getElementById('editCote').value = p.cote;
+                document.getElementById('editTitre').value = p.titre;
+                document.getElementById('editIssn').value = p.issn;
+                document.getElementById('editLocalisation').value = p.localisation;
+                document.getElementById('editPériodicité').value = p.périodicité;
+                document.getElementById('editPeriodeGarde').value = p.periodeGarde;
+                document.getElementById('editTache').value = p.tache;
+                new bootstrap.Modal(document.getElementById('editModal')).show();
+            }
+        }
+
+        async function saveEdit() {
+            const id = document.getElementById('editId').value;
+            const cote = document.getElementById('editCote').value.trim();
+            const titre = document.getElementById('editTitre').value.trim();
+            const issn = document.getElementById('editIssn').value.trim();
+            const localisation = document.getElementById('editLocalisation').value;
+            const périodicité = document.getElementById('editPériodicité').value;
+            const periodeGarde = document.getElementById('editPeriodeGarde').value;
+            const tache = document.getElementById('editTache').value;
+
+            if (!/^[0-9X]{4}-[0-9X]{4}$/.test(issn)) {
+                alert("L'ISSN doit être au format XXXX-XXXX (8 chiffres ou X).");
+                return;
+            }
+
+            const patchData = {
+                cote,
+                titre,
+                issn,
+                localisation,
+                périodicité,
+                periodeGarde,
+                tache,
+                dueDate: calculateDueDate(periodeGarde)
+            };
+
+            await fetch(`${SHEETDB_API_URL}/id/${id}`, {
+                method: 'PATCH',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({data: patchData})
+            });
+            alert('Périodique modifié !');
+            await loadPeriodicals();
+            bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
+        }
+
+        async function deletePériodique(id) {
+            if (confirm('Confirmer la suppression ?')) {
+                await fetch(`${SHEETDB_API_URL}/id/${id}`, { method: 'DELETE' });
+                await loadPeriodicals();
+            }
+        }
+
+        function filterTable(tableId) {
+            const input = document.querySelector(`#search${tableId === 'periodiquesTable' ? 'List' : 'Edit'}`).value.toLowerCase();
+            const table = document.getElementById(tableId);
+            const tr = table.getElementsByTagName('tr');
+            for (let i = 1; i < tr.length; i++) {
+                const td = tr[i].getElementsByTagName('td');
+                let visible = false;
+                for (let j = 0; j < td.length; j++) {
+                    if (td[j] && td[j].textContent.toLowerCase().includes(input)) {
+                        visible = true;
+                        break;
+                    }
+                }
+                tr[i].style.display = visible ? '' : 'none';
+            }
+        }
+
+        function getExpiredMessage(p) {
+            const now = new Date();
+            const currentYear = now.getFullYear();
+            const currentMonth = now.getMonth() + 1;
+            const periode = p.periodeGarde;
+            let n, expiredYear, expiredMonth;
+
+            if (periode.includes('mois')) {
+                n = parseInt(periode.split(' ')[0]);
+                expiredMonth = currentMonth - n - 1;
+                expiredYear = currentYear;
+                while (expiredMonth < 1) {
+                    expiredMonth += 12;
+                    expiredYear--;
+                }
+                return `Le mois ${String(expiredMonth).padStart(2, '0')}/${expiredYear} et antérieurs sont ${p.tache === 'Désherbage' ? 'à désherber' : 'à mettre en magasin'}.`;
+            } else if (periode.includes('an')) {
+                n = parseInt(periode.split(' ')[0]);
+                expiredYear = currentYear - n - 1;
+                return `L'année ${expiredYear} et antérieures sont ${p.tache === 'Désherbage' ? 'à désherber' : 'à mettre en magasin'}.`;
+            }
+            return '-';
+        }
+
+        function renderTasks() {
+            const body = document.getElementById('tasksBody');
+            body.innerHTML = '';
+            const now = new Date();
+            const sevenDaysInMs = 7 * 24 * 60 * 60 * 1000;
+
+            periodicals.forEach(p => {
+                if (p.dueDate && !isNaN(new Date(p.dueDate))) {
+                    const dueDate = new Date(p.dueDate);
+                    const currentDate = new Date(now.getFullYear(), now.getMonth(), 1);
+                    if (dueDate <= currentDate) {
+                        p.dueDate = calculateDueDate(p.periodeGarde);
+                    }
+                } else {
+                    p.dueDate = calculateDueDate(p.periodeGarde);
+                }
+            });
+
+            const tasksToDisplay = periodicals.filter(p =>
+                p.tache !== 'Toute la collection en salle' &&
+                (!p.handled || p.handled === 'false' ||
+                  (p.handled && p.handledDate && (now.getTime() - new Date(p.handledDate).getTime() < sevenDaysInMs))) &&
+                !p.taskRemovedFromList
+            );
+            tasksToDisplay.forEach(p => {
+                const message = getExpiredMessage(p);
+                const status = p.handled === true || p.handled === 'true' ? 'Effectué' : 'En attente';
+                const statusClass = p.handled === true || p.handled === 'true' ? 'status-done' : 'status-pending';
+                const button = (p.handled === false || p.handled === 'false') ? `<button class="btn btn-sm btn-primary" onclick="validateTask('${p.id}')">Valider</button>` : '';
+                const row = `<tr>
+                    <td>${p.titre}</td>
+                    <td>${p.localisation}</td>
+                    <td>${message}</td>
+                    <td class="${statusClass}">${status}</td>
+                    <td>${button}</td>
+                </tr>`;
+                body.innerHTML += row;
+            });
+            updateTaskBadge();
+        }
+
+        async function validateTask(id) {
+            const p = periodicals.find(per => per.id == id);
+            if (p) {
+                const patchData = {
+                    handled: true,
+                    handledDate: new Date().toISOString(),
+                    dueDate: calculateDueDate(p.periodeGarde)
+                };
+                await fetch(`${SHEETDB_API_URL}/id/${id}`, {
+                    method: 'PATCH',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({data: patchData})
+                });
+                await loadPeriodicals();
+            }
+        }
+
+        async function deleteDoneTasks() {
+            if (confirm('Confirmer la suppression des tâches effectuées de "Tâches à faire" ?')) {
+                const toUpdate = periodicals.filter(p => p.handled === true || p.handled === 'true');
+                for (const p of toUpdate) {
+                    await fetch(`${SHEETDB_API_URL}/id/${p.id}`, {
+                        method: 'PATCH',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({data: {taskRemovedFromList: true}})
+                    });
+                }
+                await loadPeriodicals();
+            }
+        }
+
+        async function loadPeriodicals() {
+            try {
+                const res = await fetch(SHEETDB_API_URL);
+                const data = await res.json();
+                periodicals = data.data || [];
+                renderList();
+                renderEdit();
+                renderTasks();
+                updateTaskBadge();
+            } catch (error) {
+                console.error('Erreur de chargement des périodiques :', error);
+            }
+        }
+
+        checkLogin();
+    </script>
+</body>
+</html>
